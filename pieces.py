@@ -1,6 +1,7 @@
 import config as cfg
 import pygame
 
+
 class Piece:
     def __init__(
             self, pos: tuple[int, int], color: tuple[int, int, int],
@@ -44,6 +45,8 @@ class Piece:
         self.pos = None
 
     def is_legal_move(self, dest: tuple[int, int], pieces) -> bool:
+        if self.is_captured:
+            return False
         if not (0 <= dest[0] < cfg.COLS and 0 <= dest[1] <= cfg.ROWS):
             return False
 
@@ -57,18 +60,16 @@ class Piece:
         dx = dest[0] - self.pos[0]
         dy = dest[1] - self.pos[1]
 
-        if dx > 0:
-            path_x = range(self.pos[0] + 1, dest[0])
-        else:
-            path_x = range(self.pos[0] - 1, dest[0], -1)
+        direction_x = 1 if dx > 0 else -1
+        direction_y = 1 if dy > 0 else -1
 
-        if dy > 0:
-            path_y = range(self.pos[1] + 1, dest[1])
-        else:
-            path_y = range(self.pos[1] - 1, dest[1], -1)
+        path_x = range(self.pos[0] + direction_x, dest[0], direction_x)
+        path_y = range(self.pos[1] + direction_y, dest[1], direction_y)
 
-        for piece in pieces:
-            for x, y in zip(path_x, path_y):
+        path = zip(path_x, path_y)
+
+        for x, y in path:
+            for piece in pieces:
                 if piece.pos == (x, y):
                     return False
 
@@ -77,13 +78,10 @@ class Piece:
     def check_horizontal(self, dest: tuple[int, int], pieces) -> bool:
         dx = dest[0] - self.pos[0]
 
-        if dx > 0:
-            path_x = range(self.pos[0] + 1, dest[0])
-        else:
-            path_x = range(self.pos[0] - 1, dest[0], -1)
+        direction = 1 if dx > 0 else -1
 
-        for piece in pieces:
-            for x in path_x:
+        for x in range(self.pos[0] + direction, dest[0], direction):
+            for piece in pieces:
                 if piece.pos == (x, self.pos[1]):
                     return False
 
@@ -92,13 +90,10 @@ class Piece:
     def check_vertical(self, dest: tuple[int, int], pieces) -> bool:
         dy = dest[1] - self.pos[1]
 
-        if dy > 0:
-            path_y = range(self.pos[1] + 1, dest[1])
-        else:
-            path_y = range(self.pos[1] - 1, dest[1], -1)
+        direction = 1 if dy > 0 else -1
 
-        for piece in pieces:
-            for y in path_y:
+        for y in range(self.pos[1] + direction, dest[1], direction):
+            for piece in pieces:
                 if piece.pos == (self.pos[0], y):
                     return False
 
@@ -113,6 +108,7 @@ class Piece:
         )
         if self.has_moved is False:
             self.has_moved = True
+
 
     def __repr__(self) -> str:
         return f"{self.color_name} {self.name}"
@@ -263,6 +259,10 @@ class King(Piece):
         super().__init__(pos, color, color_name, cfg.KING_ICON, cfg.KING)
 
         self.has_moved = False
+        self.is_in_check = False
+        self.normal_icon = self.icon
+        self.check_icon = self.font.render(cfg.KING_ICON, True,
+            cfg.CHECK_COLOR)
 
     def is_legal_move(self, dest: tuple[int, int], pieces) -> bool:
         if not super().is_legal_move(dest, pieces):
@@ -272,6 +272,39 @@ class King(Piece):
         dx = dest[0] - self.pos[0]
         dy = dest[1] - self.pos[1]
 
-        if abs(dx) > 1 or abs(dy) > 1:
+        if abs(dx) <= 1 and abs(dy) <= 1:
+            return True
+
+        if abs(dx) == 2 and dy == 0 and not self.has_moved:
+            return self.can_castle(dx, pieces)
+
+        return False
+
+    def can_castle(self, dx: int, pieces):
+        rook_x = cfg.ROOK_COLS[0] if dx < 0 else cfg.ROOK_COLS[1]
+        rook_pos = (rook_x, self.pos[1])
+
+        for piece in pieces:
+            if piece.pos == rook_pos \
+                    and isinstance(piece, Rook) \
+                    and not piece.has_moved:
+                break
+        else:
             return False
+
+        if not self.check_horizontal(rook_pos, pieces):
+            return False
+
+        # TODO: Add checks for whether the king is in check, moves through
+        #  check, or lands in check which would make castling illegal.
+
         return True
+
+    def draw(self, screen: pygame.Surface) -> None:
+        if self.is_in_check:
+            self.icon = self.check_icon
+        else:
+            self.icon = self.normal_icon
+
+        super().draw(screen)
+
